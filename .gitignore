@@ -27,3 +27,7 @@ __pycache__/
 .idea/
 .vscode/
 *.swp
+
+# draw.io autosave backups
+*.drawio.bkp
+.$*.drawio.bkp
