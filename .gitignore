@@ -1,0 +1,29 @@
+# macOS
+.DS_Store
+
+# AWS CDK
+cdk.out/
+*.d.ts
+cdk.context.json
+
+# Python
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local environment / secrets
+.env
+*.env
+*.pem
+*.key
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp

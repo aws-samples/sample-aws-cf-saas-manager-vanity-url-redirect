@@ -1,0 +1,132 @@
+<mxfile host="Electron">
+  <diagram id="proposed-flow" name="Proposed — CloudFront + SaaS Manager">
+    <mxGraphModel dx="1258" dy="976" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="850" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="ptitle" parent="1" style="text;html=1;fontSize=16;fontStyle=1;align=left;verticalAlign=middle;" value="MULTI-TENANT VANITY-URL REDIRECT for ISVs — CloudFront SaaS Manager (per-tenant auto ACM certs, scales to 1000s of customer domains)" vertex="1">
+          <mxGeometry height="30" width="1200" x="40" y="10" as="geometry" />
+        </mxCell>
+        <mxCell id="q_chrome" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" value="Chrome&#xa;(End User)" vertex="1">
+          <mxGeometry height="46" width="120" x="40" y="50" as="geometry" />
+        </mxCell>
+        <mxCell id="q_dns" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" value="DNS Resolver&#xa;(Customer DNS / Route53)" vertex="1">
+          <mxGeometry height="46" width="170" x="220" y="50" as="geometry" />
+        </mxCell>
+        <mxCell id="q_cf" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" value="CloudFront SaaS Manager&lt;br&gt;(multi-tenant distribution)" vertex="1">
+          <mxGeometry height="54" width="200" x="480" y="46" as="geometry" />
+        </mxCell>
+        <mxCell id="q_lambda" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" value="Lambda@Edge&lt;br&gt;(viewer-request; host header)" vertex="1">
+          <mxGeometry height="54" width="200" x="800" y="46" as="geometry" />
+        </mxCell>
+        <mxCell id="q_ddb" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" value="DynamoDB&#xa;(host → targetUrl)" vertex="1">
+          <mxGeometry height="46" width="140" x="1080" y="50" as="geometry" />
+        </mxCell>
+        <mxCell id="ql_chrome" edge="1" parent="1" style="endArrow=none;dashed=1;html=1;strokeColor=#6c8ebf;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="100" y="100" as="sourcePoint" />
+            <mxPoint x="100" y="700" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ql_dns" edge="1" parent="1" style="endArrow=none;dashed=1;html=1;strokeColor=#9673a6;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="305" y="100" as="sourcePoint" />
+            <mxPoint x="305" y="700" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ql_cf" edge="1" parent="1" style="endArrow=none;dashed=1;html=1;strokeColor=#6c8ebf;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="570" y="100" as="sourcePoint" />
+            <mxPoint x="570" y="700" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ql_lambda" edge="1" parent="1" style="endArrow=none;dashed=1;html=1;strokeColor=#82b366;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="900" y="100" as="sourcePoint" />
+            <mxPoint x="900" y="700" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ql_ddb" edge="1" parent="1" style="endArrow=none;dashed=1;html=1;strokeColor=#82b366;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1150" y="100" as="sourcePoint" />
+            <mxPoint x="1150" y="700" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="q1" edge="1" parent="1" style="html=1;endArrow=block;startArrow=none;rounded=0;fontSize=11;" value="1. Resolve vanity-a.example.com (or apex example.com)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="100" y="135" as="sourcePoint" />
+            <mxPoint x="305" y="135" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="q2" edge="1" parent="1" style="html=1;endArrow=open;startArrow=none;dashed=1;rounded=0;fontSize=11;" value="2. Subdomain: CNAME |   Apex: A record → CloudFront&amp;nbsp;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="305" y="170" as="sourcePoint" />
+            <mxPoint x="100" y="170" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="q3" edge="1" parent="1" style="html=1;endArrow=block;startArrow=none;rounded=0;fontSize=11;" value="3. TCP + TLS ClientHello (SNI = vanity-a.example.com)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="100" y="210" as="sourcePoint" />
+            <mxPoint x="570" y="210" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="q4" edge="1" parent="1" style="html=1;endArrow=block;startArrow=none;rounded=0;fontSize=11;fontColor=#1a7f37;" value="4. Select PER-TENANT ACM cert (auto-issued + auto-renewed by SaaS Manager — no listener limit, scales to 1000s)">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="670" y="245" />
+              <mxPoint x="670" y="275" />
+            </Array>
+            <mxPoint x="570" y="245" as="sourcePoint" />
+            <mxPoint x="570" y="275" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="q5" edge="1" parent="1" style="html=1;endArrow=open;startArrow=none;dashed=1;rounded=0;fontSize=11;" value="5. Serve cert → TLS handshake complete (padlock — Chrome 154 satisfied)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="570" y="310" as="sourcePoint" />
+            <mxPoint x="100" y="310" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="q6" edge="1" parent="1" style="html=1;endArrow=block;startArrow=none;rounded=0;fontSize=11;" value="6. HTTPS GET /  (Host: vanity-a.example.com)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="100" y="350" as="sourcePoint" />
+            <mxPoint x="570" y="350" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="q7" edge="1" parent="1" style="html=1;endArrow=block;startArrow=none;rounded=0;fontSize=11;" value="7. CloudFront invokes Lambda@Edge natively on viewer-request&amp;nbsp;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="570" y="390" as="sourcePoint" />
+            <mxPoint x="900" y="390" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="q8" edge="1" parent="1" style="html=1;endArrow=block;startArrow=none;rounded=0;fontSize=11;" value="8. GetItem(host = vanity-a.example.com)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="900" y="430" as="sourcePoint" />
+            <mxPoint x="1150" y="430" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="q9" edge="1" parent="1" style="html=1;endArrow=open;startArrow=none;dashed=1;rounded=0;fontSize=11;" value="9. { targetUrl, status }">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1150" y="465" as="sourcePoint" />
+            <mxPoint x="900" y="465" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="q10" edge="1" parent="1" style="html=1;endArrow=open;startArrow=none;dashed=1;rounded=0;fontSize=11;fontStyle=1;" value="10. Return to client:  302 Location: targetUrl (active)  |  403 Forbidden (missing / disabled)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="900" y="505" as="sourcePoint" />
+            <mxPoint x="100" y="505" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="q11" edge="1" parent="1" style="html=1;endArrow=block;startArrow=none;rounded=0;fontSize=11;" value="11. Browser follows 302 → real target URL">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="180" y="540" />
+              <mxPoint x="180" y="570" />
+            </Array>
+            <mxPoint x="100" y="540" as="sourcePoint" />
+            <mxPoint x="100" y="570" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
