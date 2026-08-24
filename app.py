@@ -62,7 +62,6 @@ if app.node.try_get_context("enable_saas") in ("true", "1", True):
         "VanityRedirectSaaS",
         domain_name=domain_name,
         tenant_subdomains=tenant_subdomains,
-        edge_fn_arn=core.edge_fn.edge_arn,
         web_acl_arn=core.web_acl_arn,
         create_tenant=app.node.try_get_context("create_tenant") in ("true", "1", True),
         hardening=_hardening,
