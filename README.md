@@ -176,6 +176,79 @@ and writes **access logs** to a hardened S3 bucket. The smoke test injects an
 `x-vanity-host` header on the CloudFront domain. Expected: active host → **302**
 with `Location` + HSTS; disabled/unknown → **403**.
 
+### Completing ACM certificate validation (the deploy pauses here)
+
+Both stacks create a **DNS-validated** ACM certificate, so `cdk deploy` **pauses
+partway through and waits for you** to prove domain ownership. This is expected —
+the deploy is not stuck.
+
+**What you'll see.** After the security-review prompt (answer `y`):
+
+```
+Stack includes security-sensitive updates and "--require-approval" is set to 'broadening'.
+Do you wish to deploy these changes? (y/n) y
+```
+
+the progress bar stalls (around `(10/13)` for `VanityRedirectCore`) with the
+certificate resource `CREATE_IN_PROGRESS`:
+
+```
+CREATE_IN_PROGRESS | AWS::CertificateManager::Certificate | ViewerCertificate
+```
+
+It stays here until the validation record is added and ACM verifies it. The
+reported "Deployment time" includes this wait, so **budget up to ~1 hour** —
+almost all of it idle, waiting on you plus ACM.
+
+**Find the exact record to add.** The value is unique to your certificate — read
+it from any one of these (all show the same record):
+
+1. **Your `cdk deploy` terminal** — the certificate event prints it inline:
+   ```
+   Content of DNS Record is: {Name: _<token>.<your-domain>., Type: CNAME, Value: _<value>.<id>.acm-validations.aws.}
+   ```
+2. **ACM console** (region `us-east-1`) → the `<your-domain>` certificate in
+   *Pending validation* → the **Domains** section shows the CNAME **name** and
+   **value** (with Route 53 you get a one-click "Create records in Route 53"; for
+   external DNS, copy the two values).
+3. **CloudFormation console** → `VanityRedirectCore` stack → **Events** → the
+   `ViewerCertificate` row's status reason contains the same `Content of DNS Record is: {…}`.
+4. **CLI:**
+   ```bash
+   # Find the pending cert ARN, then read its validation record:
+   aws acm list-certificates --region us-east-1 \
+     --query "CertificateSummaryList[?Status=='PENDING_VALIDATION'].CertificateArn" --output text
+
+   aws acm describe-certificate --region us-east-1 \
+     --certificate-arn <cert-arn> \
+     --query "Certificate.DomainValidationOptions[].ResourceRecord" --output table
+
+   # …or read it straight from the stack events:
+   aws cloudformation describe-stack-events --stack-name VanityRedirectCore --region us-east-1 \
+     --query "StackEvents[?contains(to_string(ResourceStatusReason),'DNS Record')].ResourceStatusReason | [0]" \
+     --output text
+   ```
+
+**Add the CNAME at your DNS provider, then verify it resolves:**
+
+| Type | Name / Host | Value / Target |
+|------|-------------|----------------|
+| `CNAME` | `_<token>` (the validation label from above) | `_<value>.<id>.acm-validations.aws` |
+
+```bash
+dig +short CNAME _<token>.<your-domain>
+# expect the _<value>.<id>.acm-validations.aws. target
+```
+
+Once it resolves, ACM validates (typically a few minutes, up to ~30) and the
+deploy **continues on its own** — do not restart it (ACM allows up to 72 hours).
+
+- The record is unique **per certificate and per account** — always read it from
+  your own deploy; never copy one from elsewhere.
+- Both phases create a certificate for the same domain. In the **same account**,
+  ACM reuses the **same** validation record, so Phase 2's certificate usually
+  validates **instantly** once Phase 1's record is in place.
+
 ### Phase 2 — a real custom domain with a per-tenant managed certificate
 
 Because a `DistributionTenant` verifies domain ownership at create time, the
@@ -199,6 +272,12 @@ cdk deploy VanityRedirectSaaS \
   -c tenant_subdomains=vanity \
   -c create_tenant=true
 ```
+
+> **Certificate note:** step (a) also creates a DNS-validated certificate
+> (`TemplateCertificate`). It validates exactly like Phase 1 — see
+> [Completing ACM certificate validation](#completing-acm-certificate-validation-the-deploy-pauses-here).
+> For the same domain in the same account, ACM reuses the Phase 1 record, so it
+> typically validates immediately.
 
 Then seed a redirect and test the real domain:
 
@@ -314,6 +393,50 @@ From the [CloudFront Developer Guide quotas](https://docs.aws.amazon.com/AmazonC
 - **Multi-tenant distributions per account:** 20 (adjustable).
 - **SSL certificates when serving via SNI:** *no account quota*.
 - **Anycast static IP lists per account:** 0 by default (request increase for apex).
+
+## FAQ / Troubleshooting
+
+**The deploy looks stuck around `(10/13)` — is it broken?**
+No. That's the ACM certificate step waiting for DNS validation. Add the
+validation CNAME and the deploy resumes automatically — see
+[Completing ACM certificate validation](#completing-acm-certificate-validation-the-deploy-pauses-here).
+
+**Creating the tenant fails with `AlreadyExists … One or more of the CNAMEs you provided are already associated with a different resource`.**
+CloudFront alternate/tenant domains are **globally unique across all AWS
+accounts**. Your tenant FQDN (e.g. `vanity.<your-domain>`) is already attached to
+another CloudFront distribution or tenant — possibly in a different account.
+Either use a different subdomain (e.g. `-c tenant_subdomains=<other>`), or release
+the existing claim. To locate a claim in an account you control:
+
+```bash
+aws cloudfront list-distribution-tenants --region us-east-1 \
+  --query "DistributionTenantList[].{Name:Name,Domain:Domains[0].Domain,Status:Status}" --output table
+```
+
+**Creating the tenant fails with `Could not verify Domain Name ownership. It may not be pointing to a valid CloudFront resource`.**
+The tenant's DNS record wasn't resolving when you ran `-c create_tenant=true`. A
+`DistributionTenant` verifies ownership at create time, so the CNAME must resolve
+**first**. Add the subdomain CNAME → the `RoutingEndpoint` from step (a), confirm
+it, then re-run step (c):
+
+```bash
+dig +short CNAME <subdomain>.<your-domain>    # must return the RoutingEndpoint
+```
+
+**How do I confirm the redirect is actually generated at the edge?**
+A successful response is `HTTP 302` with a `Location` header,
+`Strict-Transport-Security`, and `X-Cache: LambdaGeneratedResponse from cloudfront`
+— the edge function produced the response and the origin is never contacted.
+
+**`cdk destroy` fails on the Lambda@Edge function or a non-empty S3 log bucket.**
+Lambda@Edge keeps replicas for a few hours after the distribution is removed, so
+destroy may report `DELETE_FAILED` on the edge-function version — wait a few hours
+and retry, or delete the stack retaining that resource. The access-logs bucket is
+versioned and self-logging; delete all object versions (disable its bucket logging
+first so it stops re-filling) before it can be removed.
+
+**Node version warning (`This software has not been tested with node vXX`).**
+Harmless. Silence it with `export JSII_SILENCE_WARNING_UNTESTED_NODE_VERSION=1`.
 
 ## Cleanup
 
