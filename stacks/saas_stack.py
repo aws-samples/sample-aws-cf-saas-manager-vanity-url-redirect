@@ -36,9 +36,13 @@ from aws_cdk import (
 from aws_cdk import aws_certificatemanager as acm
 from aws_cdk import aws_cloudfront as cloudfront
 from aws_cdk import aws_iam as iam
+from aws_cdk import aws_lambda as lambda_
 from aws_cdk import aws_s3 as s3
 from cdk_nag import NagSuppressions
 from constructs import Construct
+
+# Fixed redirect-table name, shared with CoreStack and the edge handler.
+from stacks.core_stack import TABLE_NAME
 
 # CloudFront ACM managed-cert enum: names which host serves the DNS-validation
 # token. Not a secret. Kept as a module constant (name deliberately avoids the
@@ -54,7 +58,6 @@ class SaasStack(Stack):
         construct_id: str,
         *,
         domain_name: str,
-        edge_fn_arn: str,
         web_acl_arn: str,
         tenant_subdomains: list = None,
         create_tenant: bool = False,
@@ -104,6 +107,56 @@ class SaasStack(Stack):
             validation=acm.CertificateValidation.from_dns(),
         )
 
+        # (0) Own Lambda@Edge redirect function (decoupled from CoreStack).
+        # Previously this stack imported CoreStack's *versioned* edge-function ARN
+        # via a CloudFormation export. That export's name embeds the function's
+        # code-asset hash, so any change to the edge code minted a new export and
+        # CloudFormation refused to delete the old one while this stack still
+        # imported it ("Cannot delete export ... as it is in use by
+        # VanityRedirectSaaS"), rolling back CoreStack deploys. Building an
+        # identical function from the SAME shared asset here removes the
+        # cross-stack version export entirely; each stack owns its edge function.
+        self.edge_fn = cloudfront.experimental.EdgeFunction(
+            self,
+            "RedirectEdgeFn",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="handler.handler",
+            code=lambda_.Code.from_asset("lambda/redirect_edge"),
+        )
+        # Read access to the shared redirect table. The table + its CMK live in
+        # CoreStack; referencing those constructs here would re-introduce
+        # cross-stack exports (and a circular reference via the CMK key policy).
+        # Instead we scope DynamoDB by the table's fixed ARN and allow kms:Decrypt
+        # on the DynamoDB CMK via the kms:ViaService condition (the CMK ARN is not
+        # resolvable cross-stack without an export).
+        table_arn = self.format_arn(
+            service="dynamodb", resource="table", resource_name=TABLE_NAME
+        )
+        self.edge_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "dynamodb:GetItem",
+                    "dynamodb:BatchGetItem",
+                    "dynamodb:Query",
+                    "dynamodb:Scan",
+                    "dynamodb:ConditionCheckItem",
+                    "dynamodb:DescribeTable",
+                ],
+                resources=[table_arn, f"{table_arn}/index/*"],
+            )
+        )
+        self.edge_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["kms:Decrypt", "kms:DescribeKey"],
+                resources=["*"],
+                conditions={
+                    "StringEquals": {
+                        "kms:ViaService": f"dynamodb.{self.region}.amazonaws.com"
+                    }
+                },
+            )
+        )
+
         # (1) Multi-tenant TEMPLATE distribution (tenant-only). Reuses the core
         # Lambda@Edge redirect function on viewer-request so tenants inherit the
         # exact redirect logic proven in Phase 1.
@@ -122,7 +175,7 @@ class SaasStack(Stack):
                     lambda_function_associations=[
                         cloudfront.CfnDistribution.LambdaFunctionAssociationProperty(
                             event_type="viewer-request",
-                            lambda_function_arn=edge_fn_arn,
+                            lambda_function_arn=self.edge_fn.edge_arn,
                         )
                     ],
                 ),
@@ -216,4 +269,36 @@ class SaasStack(Stack):
                     ),
                 },
             ],
+        )
+
+        # Edge function (owned by this stack after decoupling from CoreStack).
+        NagSuppressions.add_resource_suppressions(
+            self.edge_fn,
+            [
+                {
+                    "id": "AwsSolutions-L1",
+                    "reason": (
+                        "Runtime pinned to Python 3.12, a tested Lambda@Edge-supported "
+                        "version; edge runtime bumps are validated before rollout."
+                    ),
+                },
+                {
+                    "id": "AwsSolutions-IAM4",
+                    "reason": (
+                        "AWSLambdaBasicExecutionRole is attached by the CDK EdgeFunction "
+                        "construct for CloudWatch Logs write access only."
+                    ),
+                },
+                {
+                    "id": "AwsSolutions-IAM5",
+                    "reason": (
+                        "Read-only access to the shared redirect table scoped to its "
+                        "fixed ARN plus index/*, and kms:Decrypt/DescribeKey on the "
+                        "DynamoDB CMK scoped by the kms:ViaService=dynamodb condition. "
+                        "The CMK ARN is not resolvable cross-stack, so it cannot be "
+                        "named directly without re-introducing a cross-stack export."
+                    ),
+                },
+            ],
+            apply_to_children=True,
         )
