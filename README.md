@@ -385,7 +385,7 @@ that would otherwise be needed to give apex domains fixed IPs.
 └── .github/workflows/ci.yml     # ruff lint + cdk synth + gitleaks secret scan
 ```
 
-## Key service quotas (grounded)
+## Key service quotas
 
 From the [CloudFront Developer Guide quotas](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/cloudfront-limits.html):
 
